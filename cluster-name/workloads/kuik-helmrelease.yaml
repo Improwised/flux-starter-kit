@@ -1,0 +1,31 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: kuik
+  namespace: kuik-system
+spec:
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  releaseName: kuik
+  interval: 5m
+  timeout: 15m
+  chart:
+    spec:
+      chart: "kube-image-keeper"
+      version: "1.2.0"
+      sourceRef:
+        kind: HelmRepository
+        name: kuik
+        namespace: flux-system
+  values:
+    cachedImagesExpiryDelay: 90
+    # -- If true, install the CRD
+    installCRD: true
+
+    controllers:
+      # -- Number of controllers
+      replicas: 2
