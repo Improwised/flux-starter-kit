@@ -1,0 +1,186 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: guestbook
+  namespace: guestbook
+spec:
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  releaseName: guestbook
+  interval: 5m
+  timeout: 15m
+  chart:
+    spec:
+      chart: "polymorphic-app"
+      version: 1.2.8
+      sourceRef:
+        kind: HelmRepository
+        name: improwised
+        namespace: flux-system
+  values:
+    fullnameOverride: "guestbook"
+    image:
+      pullPolicy: IfNotPresent
+    # service template
+    serviceTemplate:
+      autoscaling: false
+      minReplicaCount: 2
+      maxReplicaCount: 5
+      annotations:
+        reloader.stakater.com/auto: "true"
+      env: []
+      envFrom: []
+    services:
+      - name: redis-leader
+        image:
+          repository: "docker.io/redis"
+          tag: "6.0.5" # {"$imagepolicy": "flux-system:policy-name:tag"}
+        minReplicaCount: 1
+        ports:
+          - name: http
+            containerPort: 6379
+            protocol: TCP
+        # envFrom:
+        #   - configMapRef:
+        #       name: chantr-api-env
+        resources:
+          # We usually recommend not to specify default resources and to leave this as a conscious
+          # choice for the user. This also increases chances charts run on environments with little
+          # resources, such as Minikube. If you do want to specify resources, uncomment the following
+          # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        healthcheck:
+          enabled: false
+        service:
+          enable: true
+          type: ClusterIP
+          ports:
+            - name: http
+              port: 6379
+              targetPort: 6379
+              protocol: TCP
+          annotations: {}
+        ingress:
+          enabled: false
+          className: nginx
+          annotations: {}
+          hosts:
+            - host: guestbook.com
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+                  backend:
+                  serviceName: redis-leader
+                  servicePort: 6379
+              tls: []
+              #  - secretName: chart-example-tls
+              #    hosts:
+              #      - chart-example.local
+      - name: redis-follower
+        image:
+          repository: us-docker.pkg.dev/google-samples/containers/gke/gb-redis-follower
+          tag: v2 # {"$imagepolicy": "flux-system:policy-name:tag"}
+        minReplicaCount: 2
+        # envFrom:
+        #   - configMapRef:
+        #       name: chantr-email-worker-env
+        ports:
+          - name: http
+            containerPort: 6379
+            protocol: TCP
+        resources:
+          # We usually recommend not to specify default resources and to leave this as a conscious
+          # choice for the user. This also increases chances charts run on environments with little
+          # resources, such as Minikube. If you do want to specify resources, uncomment the following
+          # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        healthcheck:
+          enabled: false
+        service:
+          enabled: true
+          type: ClusterIP
+          ports:
+            - name: http
+              port: 6379
+              targetPort: 6379
+              protocol: TCP
+          annotations: {}
+      - name: guestbook
+        image:
+          repository: us-docker.pkg.dev/google-samples/containers/gke/gb-frontend
+          tag: v5 # {"$imagepolicy": "flux-system:guestbook-dev:tag"}
+        minReplicaCount: 2
+        env:
+        - name: GET_HOSTS_FROM
+          value: "env"
+        - name: REDIS_LEADER_SERVICE_HOST
+          value: "guestbook-redis-leader-svc"
+        - name: REDIS_FOLLOWER_SERVICE_HOST
+          value: "guestbook-redis-follower-svc"
+        # envFrom:
+        #   - configMapRef:
+        #       name: guestbook-env
+        ports:
+          - name: http
+            containerPort: 80
+            protocol: TCP
+        resources:
+          # We usually recommend not to specify default resources and to leave this as a conscious
+          # choice for the user. This also increases chances charts run on environments with little
+          # resources, such as Minikube. If you do want to specify resources, uncomment the following
+          # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+          limits:
+            cpu: 100m
+            memory: 100Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        annotations: {}
+        nodeSelector: {}
+        tolerations: []
+        affinity: {}
+        healthcheck:
+          enabled: false
+        service:
+          enabled: true
+          type: ClusterIP
+          ports:
+            - name: http
+              port: 80
+              targetPort: 80
+              protocol: TCP
+            - name: https
+              port: 443
+              targetPort: 80
+              protocol: TCP
+          annotations: {}
+        ingress:
+          enabled: true
+          className: nginx
+          annotations: {}
+          hosts:
+            - host: guestbook.com
+              paths:
+                - path: /
+                  pathType: ImplementationSpecific
+                  backend:
+                  serviceName: guestbook
+                  servicePort: 80
+          tls: []
+          #  - secretName: chart-example-tls
+          #    hosts:
+          #      - chart-example.local
